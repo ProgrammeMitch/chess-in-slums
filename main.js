@@ -1,12 +1,17 @@
 import * as THREE from 'three';
+import gsap from 'gsap';
 
+//Core Variables
 let scene;
 let camera;
 let renderer;
+let light;
+const mouse = { x: undefined, y: undefined };
+
+//Chess Piece Variables
 let pawn;
 let rook;
 let queen;
-let light;
 let king;
 
 function init() {
@@ -273,11 +278,43 @@ function createKing() {
     scene.add(king)
 }
 
+addEventListener('mousemove', () => {
+	mouse.x = (event.clientX / innerWidth) * 2 - 1,
+		mouse.y = (event.clientX / innerWidth) * 2 + 1
+})
+
+
+
 function animate() {
     requestAnimationFrame(animate);
 
     //king.rotation.x += 0.01;
     //rook.rotation.y += 0.001;
+
+    gsap.to(pawn.rotation, {
+		x: mouse.y * 0.3,
+		y: mouse.x * 0.4,
+		duration: 1
+	})
+
+    gsap.to(rook.rotation, {
+		x: mouse.y * 0.3,
+		y: mouse.x * 0.4,
+		duration: 1
+	})
+
+    gsap.to(king.rotation, {
+		x: mouse.y * 0.3,
+		y: mouse.x * 0.4,
+		duration: 1
+	})
+
+    gsap.to(queen.rotation, {
+		x: mouse.y * 0.3,
+		y: mouse.x * 0.4,
+		duration: 1
+	})
+
 
     renderer.render(scene, camera);
 }
