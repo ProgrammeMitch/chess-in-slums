@@ -1,12 +1,18 @@
 import * as THREE from 'three';
+import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+
+import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
 //import gsap from './node_modules/gsap/index';
 
 //Core Variables
 let scene;
 let camera;
 let renderer;
+let controls;
 let light;
+let plane;
 const mouse = { x: undefined, y: undefined };
+const spotlight = new THREE.SpotLight(0xfff678);
 
 //Chess Piece Variables
 let pawn;
@@ -16,29 +22,98 @@ let king;
 
 function init() {
     scene = new THREE.Scene();
+
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 
-    renderer = new THREE.WebGLRenderer();
+    renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio)
     renderer.setClearColor(0xffffff);
+    renderer.shadowMap.enabled = true;
     document.body.appendChild(renderer.domElement);
 
-    light = new THREE.DirectionalLight();
+    //
+    window.addEventListener( 'resize', onWindowResize );
+
+    createControls( camera );
+
+    //light
+
+    scene.add( new THREE.HemisphereLight( 0x8d7c7c, 0x494966, 3 ) );
+
+    addShadowedLight( 90, 70, 5, 0xffffff, 5 );
+    addShadowedLight( 90, 30, - 5, 0xffd500, 5 );
+
+    /**light = new THREE.DirectionalLight();
     light.position.set(50, 100, 20);
     light.castShadow = true;
     light.shadow.camera.left = -10;
     light.shadow.camera.right = 10;
     light.shadow.camera.top = 10;
-    light.shadow.camera.bottom = -10;
-    scene.add(light)
+    light.shadow.camera.bottom = -10;*/
+
+
+    const floorGeometry = new THREE.PlaneGeometry( 1000, 1200 );
+    const floorMesh = new THREE.Mesh( floorGeometry, new THREE.MeshStandardMaterial( {
+        roughness: 0.8,
+        color: 0xffffff,
+        metalness: 0.2,
+        bumpScale: 1
+    } ) );
+    floorMesh.receiveShadow = true;
+    floorMesh.rotation.x = - Math.PI / 2.0;
+    console.log(floorMesh )
+    scene.add( floorMesh );
 
     createPawn()
     createRook()
     createQueen()
     createKing()
+    //generatePieces() 
+    camera.position.z = 70;
+    camera.position.y = 50;
+}
 
-    camera.position.z = 100;
-    //camera.position.y = 50;
+function addShadowedLight( x, y, z, color, intensity ) {
+
+    const directionalLight = new THREE.DirectionalLight( color, intensity );
+    directionalLight.position.set( x, y, z );
+    scene.add( directionalLight );
+
+   directionalLight.castShadow = true;
+
+    const d = 1000;
+    directionalLight.shadow.camera.left = - d;
+    directionalLight.shadow.camera.right = d;
+    directionalLight.shadow.camera.top = d;
+    directionalLight.shadow.camera.bottom = - d;
+
+    directionalLight.shadow.camera.near = 1;
+    directionalLight.shadow.camera.far = 1000;
+
+    directionalLight.shadow.mapSize.width = 1024;
+    directionalLight.shadow.mapSize.height = 1024;
+
+    directionalLight.shadow.bias = - 0.001;
+
+}
+
+function createControls( camera ) {
+    
+
+    controls = new TrackballControls( camera, renderer.domElement );
+
+    controls.noPan = true;
+    controls.noRotate = true;
+    controls.maxDistance = 500;
+    controls.minDistance = 50;
+    console.log(controls.object)
+    //controls.rotateSpeed = 1.0;
+    controls.zoomSpeed = 0.5;
+    //controls.panSpeed = 0.8;
+
+    controls.keys = [ 'KeyA', 'KeyS', 'KeyD' ];
+    console.log(controls.keys)
 }
 
 function createPawn() {
@@ -78,8 +153,19 @@ function createPawn() {
     pawn.add(pawnNeck);
     pawn.add(pawnHeadBase);
     pawn.add(pawnHead);
+    pawn.position.z = 150
+    pawn.position.x = -50
+
+    pawn.traverse((node) => {
+        if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+        }
+    })
 
     scene.add(pawn);
+
+    return pawn;
 }
 
 function createRook() {
@@ -133,8 +219,18 @@ function createRook() {
     rook.add(rookHeadLeftTeeth);
     rook.add(rookHeadRightTeeth);
     rook.add(rookHeadCenterTeeth);
+    rook.position.z = 320
+    rook.position.x = 60
+
+    rook.traverse((node) => {
+        if (node.isMesh) {
+            node.castShadow = true
+        }
+    })
 
     scene.add(rook);
+
+    return rook;
 }
 
 function createQueen() {
@@ -195,9 +291,18 @@ function createQueen() {
     queen.add(queenHeadBreak);
     queen.add(queenHeadFinal);
     queen.add(queenCrown);
+    queen.position.z = 450
+    queen.position.x = -90
 
+    queen.traverse((node) => {
+        if (node.isMesh) {
+            node.castShadow = true
+        }
+    })
 
     scene.add(queen);
+
+    return queen;
 }
 
 function createKing() {
@@ -249,7 +354,7 @@ function createKing() {
         new THREE.MeshPhongMaterial({ color: 0x566D7E })
     );
     kingHeadFinal.position.set(-20, 28, 0);
-    
+
     const kingCrownVertical = new THREE.Mesh(
         new THREE.BoxGeometry(3, 3, 6),
         new THREE.MeshPhongMaterial({ color: 0x566D7E })
@@ -274,49 +379,78 @@ function createKing() {
     king.add(kingHeadFinal);
     king.add(kingCrownVertical);
     king.add(kingCrownHorizontal);
+    king.position.x = 60
+
+    king.traverse((node) => {
+        if (node.isMesh) {
+            node.castShadow = true
+        }
+    })
 
     scene.add(king)
+
+    return king;
 }
 
 addEventListener('mousemove', () => {
-	mouse.x = (event.clientX / innerWidth) * 2 - 1,
-		mouse.y = (event.clientX / innerWidth) * 2 + 1
+    mouse.x = (event.clientX / innerWidth) * 2 - 1,
+        mouse.y = (event.clientX / innerWidth) * 2 + 1
 })
 
+addEventListener('scrollend', () => {
 
+    console.log(controls.object)
+})
 
 function animate() {
     requestAnimationFrame(animate);
 
+    controls.update();
+
+    camera.position.y = 10;
+
     //king.rotation.x += 0.01;
     //rook.rotation.y += 0.001;
 
-    gsap.to(pawn.rotation, {
-		x: mouse.y * 0.3,
-		y: mouse.x * 0.4,
-		duration: 1
-	})
+    /**gsap.to(pawn.rotation, {
+        x: mouse.y * 0.3,
+        y: mouse.x * 0.4,
+        duration: 1
+    })
 
     gsap.to(rook.rotation, {
-		x: mouse.y * 0.3,
-		y: mouse.x * 0.4,
-		duration: 1
-	})
+        x: mouse.y * 0.3,
+        y: mouse.x * 0.4,
+        duration: 1
+    })
 
     gsap.to(king.rotation, {
-		x: mouse.y * 0.3,
-		y: mouse.x * 0.4,
-		duration: 1
-	})
+        x: mouse.y * 0.3,
+        y: mouse.x * 0.4,
+        duration: 1
+    })
 
     gsap.to(queen.rotation, {
-		x: mouse.y * 0.3,
-		y: mouse.x * 0.4,
-		duration: 1
-	})
-
+        x: mouse.y * 0.3,
+        y: mouse.x * 0.4,
+        duration: 1
+    })
+*/
 
     renderer.render(scene, camera);
+}
+
+function onWindowResize() {
+
+    const aspect = window.innerWidth / window.innerHeight;
+
+    camera.aspect = aspect;
+    camera.updateProjectionMatrix();
+
+    renderer.setSize( window.innerWidth, window.innerHeight );
+
+    controls.handleResize();
+
 }
 
 init()
