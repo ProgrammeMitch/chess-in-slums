@@ -2,17 +2,20 @@ import * as THREE from 'three';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
 import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
+import { ImprovedNoise } from 'three/addons/math/ImprovedNoise.js';
+import { Water } from 'https://threejs.org/examples/jsm/objects/Water.js';
 //import gsap from './node_modules/gsap/index';
 
 //Core Variables
-let scene;
-let camera;
-let renderer;
-let controls;
+let scene, camera, renderer, controls;
+
 let light;
 let plane;
+let texture, water;
+
 const mouse = { x: undefined, y: undefined };
-const spotlight = new THREE.SpotLight(0xfff678);
+const worldWidth = 64;
+const worldDepth = 64;
 
 //Chess Piece Variables
 let pawn;
@@ -22,13 +25,14 @@ let king;
 
 function init() {
     scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2( 0xefd1b5, 0.0025 );
 
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio)
-    renderer.setClearColor(0xffffff);
+    renderer.setClearColor(0xCCCCFF);
     renderer.shadowMap.enabled = true;
     document.body.appendChild(renderer.domElement);
 
@@ -52,26 +56,174 @@ function init() {
     light.shadow.camera.top = 10;
     light.shadow.camera.bottom = -10;*/
 
+    const data = generateHeight( worldWidth, worldDepth );
+    const geometry = new THREE.PlaneGeometry( 1875, 1875, worldWidth - 1, worldDepth - 1 );
+    geometry.rotateX( - Math.PI / 2 );
 
-    const floorGeometry = new THREE.PlaneGeometry( 1000, 1200 );
+    const vertices = geometry.attributes.position.array;
+
+    for ( let i = 0, j = 0, l = vertices.length; i < l; i ++, j += 3 ) {
+
+        vertices[ j + 1 ] = data[ i ] * 2.5;
+
+    }
+
+    texture = new THREE.CanvasTexture( generateTexture( data, worldWidth, worldDepth ) );
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    texture.colorSpace = THREE.SRGBColorSpace;
+
+    const terrainMesh = new THREE.Mesh( geometry, new THREE.MeshBasicMaterial( { map: texture } ) );
+    terrainMesh.position.y = -18;
+    terrainMesh.receiveShadow = true;
+    scene.add( terrainMesh );
+
+    /**const floorGeometry = new THREE.PlaneGeometry( 1000, 1200 );
     const floorMesh = new THREE.Mesh( floorGeometry, new THREE.MeshStandardMaterial( {
         roughness: 0.8,
-        color: 0xffffff,
+        color: 0x2B1B17,
         metalness: 0.2,
         bumpScale: 1
     } ) );
     floorMesh.receiveShadow = true;
     floorMesh.rotation.x = - Math.PI / 2.0;
     console.log(floorMesh )
-    scene.add( floorMesh );
+    scene.add( floorMesh );*/
 
-    createPawn()
-    createRook()
-    createQueen()
-    createKing()
+    buildWater()
+    createPawn( 180, 0, 120);
+    createPawn( -130, 0, 50);
+    createRook( 35, 0, 320);
+    createRook( -195, 0, 200);
+    createQueen( 350, 0, 60);
+    createKing( 60, 0, 0);
+    createQueen( -80, 0, 460);
     //generatePieces() 
-    camera.position.z = 70;
-    camera.position.y = 50;
+    camera.position.z = 60;
+    camera.position.y = 80;
+}
+
+function buildWater() {
+    const waterGeometry = new THREE.PlaneGeometry(10000, 10000);
+    water = new Water(
+      waterGeometry,
+      {
+        textureWidth: 512,
+        textureHeight: 512,
+        waterNormals: new THREE.TextureLoader().load('', function ( texture ) {
+          texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+        }),
+        alpha: 1.0,
+        //sunDirection: new THREE.Vector3(),
+        //sunColor: 0xffffff,
+        //waterColor: 0x2B65EC,
+        distortionScale: 0,
+        fog: scene.fog !== undefined
+      }
+    );
+    water.rotation.x =- Math.PI / 2;
+    scene.add(water);
+    
+    const waterUniforms = water.material.uniforms;
+    return water;
+  }
+
+function generateHeight( width, height ) {
+
+    let seed = Math.PI / 4;
+    window.Math.random = function () {
+
+        const x = Math.sin( seed ++ ) * 2500;
+        return x - Math.floor( x );
+
+    };
+
+    const size = width * height, data = new Uint8Array( size );
+    const perlin = new ImprovedNoise(), z = Math.random() * 25;
+
+    let quality = 1;
+
+    for ( let j = 0; j < 4; j ++ ) {
+
+        for ( let i = 0; i < size; i ++ ) {
+
+            const x = i % width, y = ~ ~ ( i / width );
+            data[ i ] += Math.abs( perlin.noise( x / quality, y / quality, z ) * quality * 1 );
+
+        }
+
+        quality *= 2.5;
+
+    }
+
+    return data;
+
+}
+
+function generateTexture( data, width, height ) {
+
+    let context, image, imageData, shade;
+
+    const vector3 = new THREE.Vector3( 0, 0, 0 );
+
+    const sun = new THREE.Vector3( 1, 1, 1 );
+    sun.normalize();
+
+    const canvas = document.createElement( 'canvas' );
+    canvas.width = width;
+    canvas.height = height;
+
+    context = canvas.getContext( '2d' );
+    context.fillStyle = '#000';
+    context.fillRect( 0, 0, width, height );
+
+    image = context.getImageData( 0, 0, canvas.width, canvas.height );
+    imageData = image.data;
+
+    for ( let i = 0, j = 0, l = imageData.length; i < l; i += 4, j ++ ) {
+
+        vector3.x = data[ j - 2 ] - data[ j + 2 ];
+        vector3.y = 2;
+        vector3.z = data[ j - width * 2 ] - data[ j + width * 2 ];
+        vector3.normalize();
+
+        shade = vector3.dot( sun );
+
+        imageData[ i ] = ( 48 + shade * 64 ) * ( 0.25 + data[ j ] * 0.0035 );
+        imageData[ i + 1 ] = ( 16 + shade * 48 ) * ( 0.25 + data[ j ] * 0.0035 );
+        imageData[ i + 2 ] = ( shade * 48 ) * ( 0.25 + data[ j ] * 0.0035 );
+
+    }
+
+    context.putImageData( image, 0, 0 );
+
+    // Scaled 4x
+
+    const canvasScaled = document.createElement( 'canvas' );
+    canvasScaled.width = width * 1;
+    canvasScaled.height = height * 1;
+
+    context = canvasScaled.getContext( '2d' );
+    context.scale( 2, 2 );
+    context.drawImage( canvas, 0, 0 );
+
+    image = context.getImageData( 0, 0, canvasScaled.width, canvasScaled.height );
+    imageData = image.data;
+
+    for ( let i = 0, l = imageData.length; i < l; i += 4 ) {
+
+        const v = ~ ~ ( Math.random() * 5 );
+
+        imageData[ i ] += v;
+        imageData[ i + 1 ] += v;
+        imageData[ i + 2 ] += v;
+
+    }
+
+    context.putImageData( image, 0, 0 );
+
+    return canvasScaled;
+
 }
 
 function addShadowedLight( x, y, z, color, intensity ) {
@@ -106,17 +258,16 @@ function createControls( camera ) {
     controls.noPan = true;
     controls.noRotate = true;
     controls.maxDistance = 500;
-    controls.minDistance = 50;
+    controls.minDistance = 80;
     console.log(controls.object)
     //controls.rotateSpeed = 1.0;
-    controls.zoomSpeed = 0.5;
+    controls.zoomSpeed = 0.35;
     //controls.panSpeed = 0.8;
 
     controls.keys = [ 'KeyA', 'KeyS', 'KeyD' ];
-    console.log(controls.keys)
 }
 
-function createPawn() {
+function createPawn( positionX, positionY, positionZ ) {
     const pawnLowestBase = new THREE.Mesh(
         new THREE.CylinderGeometry(8, 10, 4, 42, 1),
         new THREE.MeshPhongMaterial({ color: 0x566D7E })
@@ -153,8 +304,9 @@ function createPawn() {
     pawn.add(pawnNeck);
     pawn.add(pawnHeadBase);
     pawn.add(pawnHead);
-    pawn.position.z = 150
-    pawn.position.x = -50
+    pawn.position.z = positionZ
+    pawn.position.x = positionX
+    pawn.position.y = positionY
 
     pawn.traverse((node) => {
         if (node.isMesh) {
@@ -168,7 +320,7 @@ function createPawn() {
     return pawn;
 }
 
-function createRook() {
+function createRook( positionX, positionY, positionZ ) {
     const rookLowestBase = new THREE.Mesh(
         new THREE.CylinderGeometry(8, 10, 4, 42, 1),
         new THREE.MeshPhongMaterial({ color: 0x566D7E })
@@ -219,8 +371,9 @@ function createRook() {
     rook.add(rookHeadLeftTeeth);
     rook.add(rookHeadRightTeeth);
     rook.add(rookHeadCenterTeeth);
-    rook.position.z = 320
-    rook.position.x = 60
+    rook.position.z = positionZ
+    rook.position.x = positionX
+    rook.position.y = positionY
 
     rook.traverse((node) => {
         if (node.isMesh) {
@@ -233,7 +386,7 @@ function createRook() {
     return rook;
 }
 
-function createQueen() {
+function createQueen( positionX, positionY, positionZ ) {
     const queenLowestBase = new THREE.Mesh(
         new THREE.CylinderGeometry(8, 10, 4, 42, 1),
         new THREE.MeshPhongMaterial({ color: 0x566D7E })
@@ -291,21 +444,22 @@ function createQueen() {
     queen.add(queenHeadBreak);
     queen.add(queenHeadFinal);
     queen.add(queenCrown);
-    queen.position.z = 450
-    queen.position.x = -90
+    queen.position.z = positionZ
+    queen.position.x = positionX
+    queen.position.y = positionY
 
     queen.traverse((node) => {
         if (node.isMesh) {
             node.castShadow = true
         }
     })
-
+    console.log(queen)
     scene.add(queen);
 
     return queen;
 }
 
-function createKing() {
+function createKing( positionX, positionY, positionZ ) {
 
     const kingLowestBase = new THREE.Mesh(
         new THREE.CylinderGeometry(8, 10, 4, 42, 1),
@@ -379,7 +533,9 @@ function createKing() {
     king.add(kingHeadFinal);
     king.add(kingCrownVertical);
     king.add(kingCrownHorizontal);
-    king.position.x = 60
+    king.position.z = positionZ
+    king.position.x = positionX
+    king.position.y = positionY
 
     king.traverse((node) => {
         if (node.isMesh) {
@@ -397,45 +553,17 @@ addEventListener('mousemove', () => {
         mouse.y = (event.clientX / innerWidth) * 2 + 1
 })
 
-addEventListener('scrollend', () => {
-
-    console.log(controls.object)
-})
-
 function animate() {
     requestAnimationFrame(animate);
 
     controls.update();
 
-    camera.position.y = 10;
+    //water.material.uniforms[ 'time' ].value += 1.0 / 60.0
+
+    camera.position.y = 20;
 
     //king.rotation.x += 0.01;
     //rook.rotation.y += 0.001;
-
-    /**gsap.to(pawn.rotation, {
-        x: mouse.y * 0.3,
-        y: mouse.x * 0.4,
-        duration: 1
-    })
-
-    gsap.to(rook.rotation, {
-        x: mouse.y * 0.3,
-        y: mouse.x * 0.4,
-        duration: 1
-    })
-
-    gsap.to(king.rotation, {
-        x: mouse.y * 0.3,
-        y: mouse.x * 0.4,
-        duration: 1
-    })
-
-    gsap.to(queen.rotation, {
-        x: mouse.y * 0.3,
-        y: mouse.x * 0.4,
-        duration: 1
-    })
-*/
 
     renderer.render(scene, camera);
 }
